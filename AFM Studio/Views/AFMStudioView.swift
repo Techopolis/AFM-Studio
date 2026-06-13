@@ -27,7 +27,7 @@ struct AFMStudioView: View {
                     Text("Compare")
                 }
 
-            PlaceholderToolView(title: "Benchmarks", message: "Benchmark suites and result history are next in the build plan.")
+            BenchmarkView(registry: registry)
                 .tabItem {
                     Text("Benchmarks")
                 }
