@@ -32,27 +32,11 @@ struct AFMStudioView: View {
                     Text("Benchmarks")
                 }
 
-            PlaceholderToolView(title: "Settings", message: "Quotas and provider settings will live here.")
+            StudioSettingsView(registry: registry)
                 .tabItem {
                     Text("Settings")
                 }
         }
         .frame(minWidth: 980, minHeight: 680)
-    }
-}
-
-private struct PlaceholderToolView: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.largeTitle.weight(.semibold))
-            Text(message)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(32)
     }
 }
