@@ -22,7 +22,7 @@ struct AFMStudioView: View {
                     Text("Models")
                 }
 
-            PlaceholderToolView(title: "Compare", message: "Compare mode is next in the build plan.")
+            CompareView(registry: registry)
                 .tabItem {
                     Text("Compare")
                 }
