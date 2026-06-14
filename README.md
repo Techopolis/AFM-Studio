@@ -186,6 +186,14 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
 - Revisit MLX when Apple provides a Foundation Models-compatible MLX language model package.
 - Add server-provider support only through Foundation Models provider interfaces.
 
+## Contributors
+
+Thanks to everyone who has contributed to AFM Studio.
+
+[![Contributors](https://contrib.rocks/image?repo=Techopolis/AFM-Studio)](https://github.com/Techopolis/AFM-Studio/graphs/contributors)
+
+Made with [contrib.rocks](https://contrib.rocks).
+
 ## License
 
 AFM Studio is intended to be open source. Add a `LICENSE` file before public release so contributors and users know the exact terms.

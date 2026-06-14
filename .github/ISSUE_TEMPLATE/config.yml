@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Contributing guide
+    url: https://github.com/Techopolis/AFM-Studio/blob/main/CONTRIBUTING.md
+    about: How to set up, build, and open a pull request.
