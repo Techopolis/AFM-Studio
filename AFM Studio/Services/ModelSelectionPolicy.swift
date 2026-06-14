@@ -25,4 +25,45 @@ enum ModelSelectionPolicy {
             return values.isEmpty ? nil : (lane, values)
         }
     }
+
+    static func preferredComparisonModelIDs(
+        currentModelIDs: [String],
+        descriptors: [ModelDescriptor],
+        preferredCount: Int = 2
+    ) -> [String] {
+        let selectable = selectableDescriptors(from: descriptors)
+        guard selectable.isEmpty == false else {
+            return []
+        }
+
+        let selectableIDs = Set(selectable.map(\.id))
+        var selected: [String] = []
+        var seen = Set<String>()
+
+        for modelID in currentModelIDs where selectableIDs.contains(modelID) && seen.contains(modelID) == false {
+            selected.append(modelID)
+            seen.insert(modelID)
+        }
+
+        let desiredCount = min(preferredCount, selectable.count)
+        for descriptor in selectable where selected.count < desiredCount {
+            guard seen.contains(descriptor.id) == false else {
+                continue
+            }
+            selected.append(descriptor.id)
+            seen.insert(descriptor.id)
+        }
+
+        return selected
+    }
+
+    static func nextComparisonModelID(
+        selectedModelIDs: [String],
+        descriptors: [ModelDescriptor]
+    ) -> String? {
+        let selected = Set(selectedModelIDs)
+        return selectableDescriptors(from: descriptors)
+            .first { selected.contains($0.id) == false }?
+            .id
+    }
 }

@@ -30,7 +30,7 @@ struct ComparisonResult: Identifiable, Equatable {
 @Observable
 final class CompareStore {
     var prompt = ""
-    var selectedModelIDs = [BuiltInModelID.appleSystem, BuiltInModelID.privateCloud]
+    var selectedModelIDs: [String] = []
     var results: [ComparisonResult] = []
     var isRunning = false
     var errorMessage: String?
@@ -40,6 +40,8 @@ final class CompareStore {
         guard trimmed.isEmpty == false, isRunning == false else {
             return
         }
+
+        repairSelection(registry: registry)
 
         let descriptors = selectedModelIDs
             .compactMap { registry.descriptor(for: $0) }
@@ -62,10 +64,13 @@ final class CompareStore {
     }
 
     func addModel(registry: ModelRegistry) {
-        guard let descriptor = registry.descriptors.first else {
+        guard let modelID = ModelSelectionPolicy.nextComparisonModelID(
+            selectedModelIDs: selectedModelIDs,
+            descriptors: registry.descriptors
+        ) else {
             return
         }
-        selectedModelIDs.append(descriptor.id)
+        selectedModelIDs.append(modelID)
     }
 
     func removeModel(at index: Int) {
@@ -73,6 +78,16 @@ final class CompareStore {
             return
         }
         selectedModelIDs.remove(at: index)
+    }
+
+    func repairSelection(registry: ModelRegistry) {
+        let repaired = ModelSelectionPolicy.preferredComparisonModelIDs(
+            currentModelIDs: selectedModelIDs,
+            descriptors: registry.descriptors
+        )
+        if selectedModelIDs != repaired {
+            selectedModelIDs = repaired
+        }
     }
 
     private func run(descriptor: ModelDescriptor, prompt: String) async {

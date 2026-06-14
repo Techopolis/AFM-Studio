@@ -11,6 +11,18 @@ struct CompareView: View {
             && store.selectedModelIDs.contains { registry.descriptor(for: $0)?.canSend == true }
     }
 
+    private var canAddModel: Bool {
+        store.isRunning == false
+            && ModelSelectionPolicy.nextComparisonModelID(
+                selectedModelIDs: store.selectedModelIDs,
+                descriptors: registry.descriptors
+            ) != nil
+    }
+
+    private var groupedDescriptors: [(lane: ModelLane, descriptors: [ModelDescriptor])] {
+        ModelSelectionPolicy.groupedSelectableDescriptors(from: registry.descriptors)
+    }
+
     private let columns = [
         GridItem(.adaptive(minimum: 300), spacing: 14)
     ]
@@ -23,6 +35,10 @@ struct CompareView: View {
                 results
             }
             .navigationTitle("Compare")
+            .onAppear(perform: repairSelectionIfNeeded)
+            .onChange(of: registry.descriptors) { _, _ in
+                repairSelectionIfNeeded()
+            }
         }
     }
 
@@ -40,37 +56,49 @@ struct CompareView: View {
                 )
 
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(store.selectedModelIDs.indices, id: \.self) { index in
-                    HStack {
-                        Text("Model \(index + 1)")
-                            .font(.headline)
-                            .frame(width: 76, alignment: .leading)
-                        Picker("Model \(index + 1)", selection: binding(for: index)) {
-                            ForEach(registry.groupedDescriptors(), id: \.lane.rawValue) { group in
-                                Section(group.lane.title) {
-                                    ForEach(group.descriptors) { descriptor in
-                                        Text(descriptor.displayName)
-                                            .tag(descriptor.id)
+                if groupedDescriptors.isEmpty {
+                    Label("No Available Models", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(store.selectedModelIDs.indices, id: \.self) { index in
+                        HStack {
+                            Text("Model \(index + 1)")
+                                .font(.headline)
+                                .frame(width: 76, alignment: .leading)
+
+                            Picker("Model \(index + 1)", selection: binding(for: index)) {
+                                ForEach(groupedDescriptors, id: \.lane.rawValue) { group in
+                                    Section(group.lane.title) {
+                                        ForEach(group.descriptors) { descriptor in
+                                            Text(descriptor.displayName)
+                                                .tag(descriptor.id)
+                                        }
                                     }
                                 }
                             }
-                        }
-                        .pickerStyle(.menu)
-                        Spacer()
-                        Button {
-                            store.removeModel(at: index)
-                        } label: {
-                            Label("Remove", systemImage: "minus.circle")
-                        }
-                        .disabled(store.selectedModelIDs.count <= 1 || store.isRunning)
-                        .accessibilityHint("Removes this model from the comparison")
-                    }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .accessibilityHint("Selects a model for comparison")
 
-                    if let descriptor = registry.descriptor(for: store.selectedModelIDs[index]),
-                       descriptor.canSend == false {
-                        Text(descriptor.statusLine)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                            Spacer()
+
+                            Button {
+                                store.removeModel(at: index)
+                            } label: {
+                                Label("Remove Model", systemImage: "minus.circle")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .disabled(store.selectedModelIDs.count <= 1 || store.isRunning)
+                            .help("Remove model")
+                            .accessibilityHint("Removes this model from the comparison")
+                        }
+
+                        if let descriptor = registry.descriptor(for: store.selectedModelIDs[index]),
+                           descriptor.canSend == false {
+                            Text(descriptor.statusLine)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -81,7 +109,7 @@ struct CompareView: View {
                 } label: {
                     Label("Add Model", systemImage: "plus")
                 }
-                .disabled(store.isRunning)
+                .disabled(canAddModel == false)
 
                 Spacer()
 
@@ -137,7 +165,10 @@ struct CompareView: View {
     private func binding(for index: Int) -> Binding<String> {
         Binding {
             guard store.selectedModelIDs.indices.contains(index) else {
-                return registry.descriptors.first?.id ?? BuiltInModelID.appleSystem
+                return ModelSelectionPolicy.preferredComparisonModelIDs(
+                    currentModelIDs: store.selectedModelIDs,
+                    descriptors: registry.descriptors
+                ).first ?? ""
             }
             return store.selectedModelIDs[index]
         } set: { newValue in
@@ -145,7 +176,12 @@ struct CompareView: View {
                 return
             }
             store.selectedModelIDs[index] = newValue
+            repairSelectionIfNeeded()
         }
+    }
+
+    private func repairSelectionIfNeeded() {
+        store.repairSelection(registry: registry)
     }
 }
 

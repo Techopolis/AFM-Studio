@@ -74,7 +74,7 @@ struct StudioSettingsView: View {
             ModelLibraryView(
                 registry: registry,
                 downloadManager: downloadManager,
-                wrapsInNavigationStack: false
+                presentation: .settingsDetail
             )
         case .privateCloud:
             privateCloudSettings

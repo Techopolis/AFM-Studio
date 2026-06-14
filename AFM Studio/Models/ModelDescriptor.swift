@@ -93,4 +93,8 @@ struct ModelDescriptor: Identifiable, Codable, Equatable, Sendable {
     var canSend: Bool {
         availability == .available || availability == .experimental
     }
+
+    var hasDownloadReference: Bool {
+        downloadURL != nil
+    }
 }

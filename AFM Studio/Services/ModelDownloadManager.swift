@@ -145,48 +145,23 @@ final class ModelDownloadManager {
             return
         }
 
-        guard let file = model.primaryFile else {
+        guard model.files.isEmpty == false else {
             downloadStatuses[model.id] = .failed(ModelDownloadError.missingFile(model).localizedDescription)
             return
         }
 
         let workDirectory = downloadDirectory.appendingPathComponent(model.id, isDirectory: true)
-        let zipURL = workDirectory.appendingPathComponent(file.name, isDirectory: false)
-        let extractDirectory = workDirectory.appendingPathComponent("extracted", isDirectory: true)
 
         do {
             try FileManager.default.removeItemIfExists(at: workDirectory)
             try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
 
-            downloadStatuses[model.id] = .downloading(progress: 0, downloadedBytes: 0, totalBytes: file.sizeBytes)
-            let request = RemoteModelDownloadRequest(destinationURL: zipURL) { [weak self] downloadedBytes, totalBytes in
-                Task { @MainActor in
-                    let expectedBytes = totalBytes ?? file.sizeBytes
-                    let progress = expectedBytes > 0 ? min(Double(downloadedBytes) / Double(expectedBytes), 1) : 0
-                    self?.downloadStatuses[model.id] = .downloading(
-                        progress: progress,
-                        downloadedBytes: downloadedBytes,
-                        totalBytes: expectedBytes
-                    )
-                }
-            }
-            activeDownloads[model.id] = request
-            _ = try await request.download(from: file.url)
-            activeDownloads[model.id] = nil
-
-            let actualHash = try RemoteModelChecksum.sha256Hex(for: zipURL)
-            guard actualHash.lowercased() == file.sha256.lowercased() else {
-                throw ModelDownloadError.checksumMismatch(expected: file.sha256, actual: actualHash)
+            if model.isBundleDownload {
+                try await downloadBundle(model, workDirectory: workDirectory)
+            } else {
+                try await downloadZipArchive(model, workDirectory: workDirectory)
             }
 
-            downloadStatuses[model.id] = .installing
-            try FileManager.default.createDirectory(at: extractDirectory, withIntermediateDirectories: true)
-            try unzipItem(at: zipURL, to: extractDirectory)
-            _ = try RemoteModelArchiveInstaller.installExtractedArchive(
-                at: extractDirectory,
-                for: model,
-                modelDirectory: modelDirectory
-            )
             try FileManager.default.removeItemIfExists(at: workDirectory)
             downloadStatuses[model.id] = .installed
         } catch is CancellationError {
@@ -197,6 +172,96 @@ final class ModelDownloadManager {
             activeDownloads[model.id] = nil
             try? FileManager.default.removeItemIfExists(at: workDirectory)
             downloadStatuses[model.id] = .failed(error.localizedDescription)
+        }
+    }
+
+    private func downloadZipArchive(_ model: RemoteModel, workDirectory: URL) async throws {
+        guard let file = model.primaryFile else {
+            throw ModelDownloadError.missingFile(model)
+        }
+
+        let zipURL = workDirectory.appendingPathComponent(file.name, isDirectory: false)
+        let extractDirectory = workDirectory.appendingPathComponent("extracted", isDirectory: true)
+        try await downloadFile(
+            file,
+            to: zipURL,
+            modelID: model.id,
+            progressOffset: 0,
+            totalBytes: file.sizeBytes
+        )
+
+        downloadStatuses[model.id] = .installing
+        try FileManager.default.createDirectory(at: extractDirectory, withIntermediateDirectories: true)
+        try unzipItem(at: zipURL, to: extractDirectory)
+        _ = try RemoteModelArchiveInstaller.installExtractedArchive(
+            at: extractDirectory,
+            for: model,
+            modelDirectory: modelDirectory
+        )
+    }
+
+    private func downloadBundle(_ model: RemoteModel, workDirectory: URL) async throws {
+        let bundleDirectory = workDirectory.appendingPathComponent("bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundleDirectory, withIntermediateDirectories: true)
+
+        let totalBytes = model.totalSizeBytes ?? model.files.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        var downloadedBytes: Int64 = 0
+        for file in model.files {
+            let destinationURL = try file.destinationURL(in: bundleDirectory)
+            try await downloadFile(
+                file,
+                to: destinationURL,
+                modelID: model.id,
+                progressOffset: downloadedBytes,
+                totalBytes: totalBytes
+            )
+            downloadedBytes += file.sizeBytes
+        }
+
+        downloadStatuses[model.id] = .installing
+        _ = try RemoteModelArchiveInstaller.installExtractedArchive(
+            at: bundleDirectory,
+            for: model,
+            modelDirectory: modelDirectory
+        )
+    }
+
+    private func downloadFile(
+        _ file: RemoteModelFile,
+        to destinationURL: URL,
+        modelID: String,
+        progressOffset: Int64,
+        totalBytes: Int64
+    ) async throws {
+        try FileManager.default.createDirectory(
+            at: destinationURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        downloadStatuses[modelID] = .downloading(
+            progress: Double(progressOffset) / Double(max(totalBytes, 1)),
+            downloadedBytes: progressOffset,
+            totalBytes: totalBytes
+        )
+        let request = RemoteModelDownloadRequest(destinationURL: destinationURL) { [weak self] downloadedBytes, _ in
+            Task { @MainActor in
+                let expectedBytes = max(totalBytes, 1)
+                let completedBytes = min(progressOffset + downloadedBytes, expectedBytes)
+                let progress = min(Double(completedBytes) / Double(expectedBytes), 1)
+                self?.downloadStatuses[modelID] = .downloading(
+                    progress: progress,
+                    downloadedBytes: completedBytes,
+                    totalBytes: expectedBytes
+                )
+            }
+        }
+        activeDownloads[modelID] = request
+        _ = try await request.download(from: file.url)
+        activeDownloads[modelID] = nil
+
+        let actualHash = try RemoteModelChecksum.sha256Hex(for: destinationURL)
+        guard actualHash.lowercased() == file.sha256.lowercased() else {
+            throw ModelDownloadError.checksumMismatch(expected: file.sha256, actual: actualHash)
         }
     }
 

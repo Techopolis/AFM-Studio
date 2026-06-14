@@ -25,12 +25,22 @@ final class ModelRegistry {
         }
 
         let activeRemoteRegistry = remoteRegistry ?? cachedRemoteRegistry
-        next.append(contentsOf: CoreAIModelCatalog.entries.map { entry in
+        let catalogEntries = CoreAIModelCatalog.entries
+        next.append(contentsOf: catalogEntries.map { entry in
             coreAICatalogDescriptor(
                 for: entry,
                 remoteModel: activeRemoteRegistry?.remoteModel(matching: entry)
             )
         })
+        if let activeRemoteRegistry {
+            next.append(
+                contentsOf: activeRemoteRegistry.models
+                    .filter { remoteModel in
+                        catalogEntries.contains { remoteModel.matches(catalogEntry: $0) } == false
+                    }
+                    .map(coreAIRemoteDescriptor)
+            )
+        }
         next.append(contentsOf: userModels.map(userDescriptor))
         descriptors = next
     }
@@ -105,15 +115,20 @@ final class ModelRegistry {
         let availability: ModelAvailabilityState
         let statusLine: String
 
-        if isLinked == false {
-            availability = .unavailable
-            statusLine = CoreAILanguageModelSupport.statusLine
-        } else if installedBundleURL != nil {
-            availability = .experimental
-            statusLine = "Installed local Core AI bundle - \(entry.source.title)"
+        if installedBundleURL != nil {
+            if isLinked {
+                availability = .experimental
+                statusLine = "Installed local Core AI bundle - \(entry.source.title)"
+            } else {
+                availability = .unavailable
+                statusLine = CoreAILanguageModelSupport.statusLine
+            }
         } else if let remoteModel {
             availability = .requiresSetup
             statusLine = "Ready to download - \(remoteModel.formattedSize)"
+        } else if isLinked == false {
+            availability = .unavailable
+            statusLine = CoreAILanguageModelSupport.statusLine
         } else {
             availability = .requiresSetup
             statusLine = entry.statusLine
@@ -127,10 +142,49 @@ final class ModelRegistry {
             catalogID: entry.id,
             catalogSource: entry.source.title,
             catalogURL: entry.modelCardURL,
-            downloadURL: remoteModel?.primaryFile?.url ?? entry.downloadURL,
+            downloadURL: remoteModel?.downloadURL ?? entry.downloadURL,
             exportCommand: entry.exportCommand,
             platformSummary: entry.platformSummary,
             resourcePath: installedBundleURL?.path,
+            capabilities: .textOnly,
+            availability: availability,
+            statusLine: statusLine,
+            isBuiltIn: true
+        )
+    }
+
+    private func coreAIRemoteDescriptor(for remoteModel: RemoteModel) -> ModelDescriptor {
+        let isLinked = CoreAILanguageModelSupport.isCompiledIn
+        let installedBundleURL = CoreAIModelStore.installedBundleIfAvailable(for: remoteModel)
+        let availability: ModelAvailabilityState
+        let statusLine: String
+
+        if installedBundleURL != nil {
+            if isLinked {
+                availability = .experimental
+                statusLine = "Installed local Core AI bundle - Remote registry"
+            } else {
+                availability = .unavailable
+                statusLine = CoreAILanguageModelSupport.statusLine
+            }
+        } else {
+            availability = .requiresSetup
+            statusLine = "Ready to download - \(remoteModel.formattedSize)"
+        }
+
+        return ModelDescriptor(
+            id: remoteModel.id,
+            displayName: remoteModel.name,
+            lane: .coreAI,
+            modelID: remoteModel.hfModelId,
+            catalogID: remoteModel.id,
+            catalogSource: "Remote registry",
+            catalogURL: remoteModel.readme,
+            downloadURL: remoteModel.downloadURL,
+            exportCommand: nil,
+            platformSummary: remoteModel.format,
+            resourcePath: installedBundleURL?.path,
+            variant: remoteModel.variant,
             capabilities: .textOnly,
             availability: availability,
             statusLine: statusLine,
@@ -189,10 +243,14 @@ final class ModelRegistry {
 
 private extension RemoteModelRegistry {
     func remoteModel(matching entry: CoreAIModelCatalogEntry) -> RemoteModel? {
-        models.first { remoteModel in
-            remoteModel.hfModelId == entry.modelID ||
-            remoteModel.id == entry.id ||
-            entry.localBundlePath?.hasPrefix("\(remoteModel.id)/") == true
-        }
+        models.first { $0.matches(catalogEntry: entry) }
+    }
+}
+
+private extension RemoteModel {
+    func matches(catalogEntry entry: CoreAIModelCatalogEntry) -> Bool {
+        hfModelId == entry.modelID ||
+        id == entry.id ||
+        entry.localBundlePath?.hasPrefix("\(id)/") == true
     }
 }

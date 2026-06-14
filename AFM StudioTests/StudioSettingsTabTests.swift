@@ -4,6 +4,7 @@ import Foundation
 struct StudioSettingsTabTests {
     static func main() throws {
         try exposesPerspectiveStyleSettingsTabs()
+        try settingsModelLibraryUsesInlineActions()
         print("StudioSettingsTabTests passed")
     }
 
@@ -22,6 +23,26 @@ struct StudioSettingsTabTests {
         try expect(
             StudioSettingsTab.allCases.allSatisfy { $0.accessibilityHint.isEmpty == false },
             "settings tabs should provide VoiceOver hints"
+        )
+    }
+
+    private static func settingsModelLibraryUsesInlineActions() throws {
+        try expect(
+            ModelLibraryPresentation.standalone.showsToolbarActions,
+            "standalone model library should keep toolbar actions"
+        )
+        try expect(
+            ModelLibraryPresentation.standalone.showsInlineSettingsActions == false,
+            "standalone model library should not duplicate settings rows"
+        )
+
+        try expect(
+            ModelLibraryPresentation.settingsDetail.showsToolbarActions == false,
+            "settings model library should hide detached toolbar actions"
+        )
+        try expect(
+            ModelLibraryPresentation.settingsDetail.showsInlineSettingsActions,
+            "settings model library should expose actions as settings rows"
         )
     }
 

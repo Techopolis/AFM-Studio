@@ -26,12 +26,17 @@ struct RemoteModel: Codable, Equatable, Identifiable, Sendable {
     var kind: String
     var numParameters: String
     var license: String
+    var licenseUrl: URL?
     var tokenizer: String
     var vocabSize: Int?
     var maxContextLength: Int?
     var compression: String?
     var variant: String
     var aimodel: String
+    var format: String?
+    var baseUrl: URL?
+    var readme: URL?
+    var totalSizeBytes: Int64?
     var files: [RemoteModelFile]
 
     var primaryFile: RemoteModelFile? {
@@ -43,19 +48,62 @@ struct RemoteModel: Codable, Equatable, Identifiable, Sendable {
     }
 
     var formattedSize: String {
-        guard let sizeBytes = primaryFile?.sizeBytes else {
+        let sizeBytes = totalSizeBytes ?? files.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        guard sizeBytes > 0 else {
             return "Unknown size"
         }
         return RemoteModelFile.format(sizeBytes: sizeBytes)
+    }
+
+    var downloadURL: URL? {
+        baseUrl ?? primaryFile?.url
+    }
+
+    var isBundleDownload: Bool {
+        format == "aimodel-bundle" || files.contains { $0.path != nil }
     }
 }
 
 struct RemoteModelFile: Codable, Equatable, Sendable {
     var name: String
+    var path: String?
     var url: URL
     var sizeBytes: Int64
-    var format: String
+    var format: String?
     var sha256: String
+
+    var relativePath: String {
+        path ?? name
+    }
+
+    init(
+        name: String,
+        path: String? = nil,
+        url: URL,
+        sizeBytes: Int64,
+        format: String? = nil,
+        sha256: String
+    ) {
+        self.name = name
+        self.path = path
+        self.url = url
+        self.sizeBytes = sizeBytes
+        self.format = format
+        self.sha256 = sha256
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let url = try container.decode(URL.self, forKey: .url)
+        let path = try container.decodeIfPresent(String.self, forKey: .path)
+        let decodedName = try container.decodeIfPresent(String.self, forKey: .name)
+        self.name = decodedName ?? path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? url.lastPathComponent
+        self.path = path
+        self.url = url
+        sizeBytes = try container.decode(Int64.self, forKey: .sizeBytes)
+        format = try container.decodeIfPresent(String.self, forKey: .format)
+        sha256 = try container.decode(String.self, forKey: .sha256)
+    }
 
     static func format(sizeBytes: Int64) -> String {
         let value = Double(sizeBytes)
@@ -71,6 +119,39 @@ struct RemoteModelFile: Codable, Equatable, Sendable {
         }
 
         return "\(sizeBytes) bytes"
+    }
+
+    func destinationURL(in directory: URL) throws -> URL {
+        let components = relativePath
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard components.isEmpty == false else {
+            throw RemoteModelFilePathError.unsafePath(relativePath)
+        }
+
+        var destination = directory
+        for (index, component) in components.enumerated() {
+            guard component.isEmpty == false,
+                  component != ".",
+                  component != "..",
+                  component.contains(":") == false else {
+                throw RemoteModelFilePathError.unsafePath(relativePath)
+            }
+            destination.appendPathComponent(component, isDirectory: index < components.count - 1)
+        }
+
+        return destination
+    }
+}
+
+enum RemoteModelFilePathError: LocalizedError {
+    case unsafePath(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsafePath(let value):
+            "The registry contains an unsafe file path: \(value)"
+        }
     }
 }
 

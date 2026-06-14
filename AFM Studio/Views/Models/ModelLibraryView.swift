@@ -9,7 +9,7 @@ struct ModelLibraryView: View {
 
     let registry: ModelRegistry
     let downloadManager: ModelDownloadManager
-    var wrapsInNavigationStack = true
+    var presentation: ModelLibraryPresentation = .standalone
 
     @State private var isAddingModel = false
     @State private var deletionCandidate: RemoteModel?
@@ -18,7 +18,7 @@ struct ModelLibraryView: View {
 
     var body: some View {
         Group {
-            if wrapsInNavigationStack {
+            if presentation.wrapsInNavigationStack {
                 NavigationStack {
                     content
                 }
@@ -31,6 +31,10 @@ struct ModelLibraryView: View {
     private var content: some View {
         Group {
             List {
+                if presentation.showsInlineSettingsActions {
+                    modelLibraryActionsSection
+                }
+
                 ForEach(registry.groupedDescriptors(), id: \.lane.rawValue) { group in
                     Section {
                         ForEach(group.descriptors) { descriptor in
@@ -68,33 +72,34 @@ struct ModelLibraryView: View {
             }
             .navigationTitle("Models")
             .toolbar {
-                ToolbarItemGroup {
-                    Button {
-                        registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-                    .help("Refresh Models")
-                    .accessibilityHint("Updates model availability and installed bundle status")
-
-                    Button {
-                        Task {
-                            await downloadManager.refreshRegistry()
-                            registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
+                if presentation.showsToolbarActions {
+                    ToolbarItemGroup {
+                        Button {
+                            refreshModels()
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
                         }
-                    } label: {
-                        Label("Refresh Registry", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .disabled(downloadManager.registryStatus == .refreshing)
-                    .help("Refresh Download Registry")
-                    .accessibilityHint("Downloads the latest AFM Studio model registry")
+                        .help("Refresh Models")
+                        .accessibilityHint("Updates model availability and installed bundle status")
 
-                    Button {
-                        isAddingModel = true
-                    } label: {
-                        Label("Add Model", systemImage: "plus")
+                        Button {
+                            Task {
+                                await refreshDownloadRegistry()
+                            }
+                        } label: {
+                            Label("Refresh Registry", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(downloadManager.registryStatus == .refreshing)
+                        .help("Refresh Download Registry")
+                        .accessibilityHint("Downloads the latest AFM Studio model registry")
+
+                        Button {
+                            showAddModelSheet()
+                        } label: {
+                            Label("Add Model", systemImage: "plus")
+                        }
+                        .help("Add Model")
                     }
-                    .help("Add Model")
                 }
             }
             .sheet(isPresented: $isAddingModel) {
@@ -130,21 +135,62 @@ struct ModelLibraryView: View {
                 )
             }
             .onAppear {
-                registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
+                refreshModels()
                 if downloadManager.registry == nil {
                     Task {
-                        await downloadManager.refreshRegistry()
-                        registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
+                        await refreshDownloadRegistry()
                     }
                 }
             }
             .onChange(of: userModels.count) { _, _ in
-                registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
+                refreshModels()
             }
             .onChange(of: downloadManager.downloadStatuses) { _, statuses in
                 announceDownloadMilestones(statuses)
             }
         }
+    }
+
+    private var modelLibraryActionsSection: some View {
+        Section("Model Library") {
+            ModelLibraryActionRow(
+                title: "Refresh Model Status",
+                detail: "Checks installed Core AI bundles and saved user models",
+                systemImage: "arrow.clockwise",
+                action: refreshModels
+            )
+
+            ModelLibraryActionRow(
+                title: "Refresh Download Registry",
+                detail: "Downloads registry.json and updates model availability",
+                systemImage: "arrow.triangle.2.circlepath",
+                isDisabled: downloadManager.registryStatus == .refreshing
+            ) {
+                Task {
+                    await refreshDownloadRegistry()
+                }
+            }
+
+            ModelLibraryActionRow(
+                title: "Add Local Model",
+                detail: "Adds a local Core AI bundle or server provider record",
+                systemImage: "plus",
+                action: showAddModelSheet
+            )
+        }
+    }
+
+    private func refreshModels() {
+        registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
+    }
+
+    private func refreshDownloadRegistry() async {
+        await downloadManager.refreshRegistry()
+        refreshModels()
+    }
+
+    private func showAddModelSheet() {
+        isAddingModel = true
     }
 
     private func deleteDownloadedModel(_ remoteModel: RemoteModel) {
@@ -181,6 +227,40 @@ struct ModelLibraryView: View {
                 break
             }
         }
+    }
+}
+
+private struct ModelLibraryActionRow: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    var isDisabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            } icon: {
+                Image(systemName: systemImage)
+                    .frame(width: 20)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .disabled(isDisabled)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(detail)
+        .accessibilityHint(isDisabled ? "Unavailable while the current refresh is running" : "Runs this model library action")
     }
 }
 
@@ -277,6 +357,17 @@ private struct ModelDescriptorRow: View {
                             deleteAction: deleteAction
                         )
                     }
+                } else if descriptor.hasDownloadReference, let downloadURL = descriptor.downloadURL {
+                    HStack {
+                        Spacer()
+                        Link(destination: downloadURL) {
+                            Label("Open Download", systemImage: "arrow.down.circle")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityLabel("Open \(descriptor.displayName) download")
+                        .accessibilityHint("Opens the external Core AI model download page")
+                    }
                 }
             }
         }
@@ -290,6 +381,8 @@ private struct ModelDescriptorRow: View {
         var value = "\(descriptor.lane.title), \(descriptor.availability.rawValue), \(descriptor.statusLine)"
         if let remoteModel {
             value += ", download size \(remoteModel.formattedSize)"
+        } else if descriptor.hasDownloadReference {
+            value += ", external download available"
         }
 
         switch downloadStatus {

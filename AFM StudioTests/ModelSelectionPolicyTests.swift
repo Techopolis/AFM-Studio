@@ -5,6 +5,9 @@ struct ModelSelectionPolicyTests {
     static func main() throws {
         try filtersToSendableDescriptors()
         try repairsUnavailableSelection()
+        try choosesFirstTwoSendableModelsForComparison()
+        try repairsComparisonSelectionWhenModelsChange()
+        try addsOnlyUnselectedComparisonModels()
         print("ModelSelectionPolicyTests passed")
     }
 
@@ -34,6 +37,66 @@ struct ModelSelectionPolicyTests {
         try expect(
             ModelSelectionPolicy.preferredModelID(currentModelID: "system", descriptors: descriptors) == "system",
             "available chat selection should be preserved"
+        )
+    }
+
+    private static func choosesFirstTwoSendableModelsForComparison() throws {
+        let descriptors = [
+            descriptor(id: "needs-download", availability: .requiresSetup),
+            descriptor(id: "system", availability: .available),
+            descriptor(id: "downloaded-coreai", availability: .experimental),
+            descriptor(id: "cloud", availability: .available)
+        ]
+
+        let selected = ModelSelectionPolicy.preferredComparisonModelIDs(
+            currentModelIDs: [],
+            descriptors: descriptors
+        )
+
+        try expect(
+            selected == ["system", "downloaded-coreai"],
+            "comparison should start with the first two sendable models"
+        )
+    }
+
+    private static func repairsComparisonSelectionWhenModelsChange() throws {
+        let descriptors = [
+            descriptor(id: "needs-download", availability: .requiresSetup),
+            descriptor(id: "system", availability: .available),
+            descriptor(id: "downloaded-coreai", availability: .experimental)
+        ]
+
+        let selected = ModelSelectionPolicy.preferredComparisonModelIDs(
+            currentModelIDs: ["needs-download", "system", "system"],
+            descriptors: descriptors
+        )
+
+        try expect(
+            selected == ["system", "downloaded-coreai"],
+            "comparison should remove unavailable and duplicate selections, then fill to two models"
+        )
+    }
+
+    private static func addsOnlyUnselectedComparisonModels() throws {
+        let descriptors = [
+            descriptor(id: "system", availability: .available),
+            descriptor(id: "downloaded-coreai", availability: .experimental),
+            descriptor(id: "needs-download", availability: .requiresSetup)
+        ]
+
+        try expect(
+            ModelSelectionPolicy.nextComparisonModelID(
+                selectedModelIDs: ["system"],
+                descriptors: descriptors
+            ) == "downloaded-coreai",
+            "comparison add should choose the next sendable model not already selected"
+        )
+        try expect(
+            ModelSelectionPolicy.nextComparisonModelID(
+                selectedModelIDs: ["system", "downloaded-coreai"],
+                descriptors: descriptors
+            ) == nil,
+            "comparison add should stop when all sendable models are already selected"
         )
     }
 
