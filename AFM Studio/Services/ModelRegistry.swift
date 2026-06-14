@@ -54,7 +54,13 @@ final class ModelRegistry {
             displayName: "Apple System Model",
             lane: .appleSystem,
             modelID: "SystemLanguageModel.default",
-            capabilities: .textOnly,
+            capabilities: ModelCapabilitySet(
+                text: true,
+                reasoning: false,
+                toolCalling: false,
+                guidedGeneration: false,
+                vision: true
+            ),
             availability: status.0,
             statusLine: status.1,
             isBuiltIn: true
@@ -76,7 +82,7 @@ final class ModelRegistry {
                 reasoning: true,
                 toolCalling: false,
                 guidedGeneration: true,
-                vision: false
+                vision: true
             ),
             availability: availability.0,
             statusLine: availability.0 == .available ? quota : availability.1,

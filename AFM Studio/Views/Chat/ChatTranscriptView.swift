@@ -9,6 +9,8 @@ struct ChatTranscriptView: View {
     let chatStore: ChatStore
 
     @State private var draft = ""
+    @State private var pendingAttachments: [ChatImageAttachment] = []
+    @State private var attachmentErrorMessage: String?
 
     private var messages: [MessageRecord] {
         conversation.messages.sorted { $0.createdAt < $1.createdAt }
@@ -19,7 +21,13 @@ struct ChatTranscriptView: View {
     }
 
     private var canSend: Bool {
-        selectedDescriptor?.canSend == true && chatStore.isGenerating == false
+        guard selectedDescriptor?.canSend == true, chatStore.isGenerating == false else {
+            return false
+        }
+        if pendingAttachments.isEmpty == false {
+            return selectedDescriptor?.capabilities.vision == true
+        }
+        return true
     }
 
     var body: some View {
@@ -30,9 +38,13 @@ struct ChatTranscriptView: View {
             Divider()
             ComposerView(
                 draft: $draft,
+                attachments: pendingAttachments,
                 isSending: chatStore.isGenerating,
                 canSend: canSend,
                 unavailableReason: unavailableReason,
+                attachmentErrorMessage: attachmentErrorMessage,
+                onAttachImages: attachImages,
+                onRemoveAttachment: removeAttachment,
                 onSend: send
             )
         }
@@ -124,15 +136,49 @@ struct ChatTranscriptView: View {
         guard selectedDescriptor.canSend else {
             return selectedDescriptor.statusLine
         }
+        if pendingAttachments.isEmpty == false, selectedDescriptor.capabilities.vision == false {
+            return "The selected model does not support image attachments."
+        }
         return nil
     }
 
     private func send() {
-        let prompt = draft
-        draft = ""
-        Task {
-            await chatStore.send(prompt, in: modelContext)
+        let payload = ChatPromptPayload(text: draft, attachments: pendingAttachments)
+        guard payload.canSubmit else {
+            return
         }
+        let prompt = draft
+        let attachments = pendingAttachments
+        draft = ""
+        pendingAttachments = []
+        attachmentErrorMessage = nil
+        Task {
+            await chatStore.send(prompt, attachments: attachments, in: modelContext)
+        }
+    }
+
+    private func attachImages(_ urls: [URL]) {
+        guard urls.isEmpty == false else {
+            return
+        }
+
+        Task {
+            do {
+                let attachments = try ChatAttachmentStore.makeAttachments(from: urls)
+                await MainActor.run {
+                    pendingAttachments.append(contentsOf: attachments)
+                    attachmentErrorMessage = nil
+                }
+            } catch {
+                await MainActor.run {
+                    attachmentErrorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func removeAttachment(_ attachment: ChatImageAttachment) {
+        pendingAttachments.removeAll { $0.id == attachment.id }
     }
 
     private func scrollToBottom(with proxy: ScrollViewProxy) {
@@ -173,6 +219,12 @@ private struct ChatMessageBubble: View {
         return trimmed?.isEmpty == false ? trimmed : nil
     }
 
+    private var attachments: [ChatImageAttachment] {
+        message.attachments
+            .sorted { $0.createdAt < $1.createdAt }
+            .map(\.chatImageAttachment)
+    }
+
     var body: some View {
         HStack(alignment: .top) {
             if isUser {
@@ -192,17 +244,12 @@ private struct ChatMessageBubble: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            Text(displayContent)
-                .textSelection(.enabled)
-                .padding(.horizontal, isUser ? 14 : 0)
-                .padding(.vertical, isUser ? 10 : 0)
-                .background {
-                    if isUser {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.accentColor.opacity(0.14))
-                    }
-                }
-                .frame(maxWidth: isUser ? 560 : .infinity, alignment: isUser ? .trailing : .leading)
+            messageContentView
+
+            if attachments.isEmpty == false {
+                ChatImageAttachmentStrip(attachments: attachments)
+                    .frame(maxWidth: isUser ? 560 : .infinity, alignment: isUser ? .trailing : .leading)
+            }
 
             if let thinkingContent {
                 DisclosureGroup("Thinking") {
@@ -221,6 +268,28 @@ private struct ChatMessageBubble: View {
             metadata
         }
         .frame(maxWidth: isUser ? 600 : .infinity, alignment: isUser ? .trailing : .leading)
+    }
+
+    @ViewBuilder
+    private var messageContentView: some View {
+        if isUser {
+            Text(displayContent)
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.accentColor.opacity(0.14))
+                }
+                .frame(maxWidth: 560, alignment: .trailing)
+        } else {
+            StructuredMarkdownView(
+                content: displayContent,
+                textColor: .primary,
+                isFromUser: false
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     @ViewBuilder

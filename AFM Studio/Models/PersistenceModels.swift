@@ -42,6 +42,9 @@ final class MessageRecord {
     @Relationship(deleteRule: .cascade, inverse: \RunRecord.message)
     var runs: [RunRecord]
 
+    @Relationship(deleteRule: .cascade, inverse: \MessageAttachmentRecord.message)
+    var attachments: [MessageAttachmentRecord]
+
     init(
         id: UUID = UUID(),
         role: MessageRole,
@@ -50,7 +53,8 @@ final class MessageRecord {
         thinkingContent: String? = nil,
         createdAt: Date = .now,
         conversation: ConversationRecord? = nil,
-        runs: [RunRecord] = []
+        runs: [RunRecord] = [],
+        attachments: [MessageAttachmentRecord] = []
     ) {
         self.id = id
         self.role = role
@@ -60,6 +64,66 @@ final class MessageRecord {
         self.createdAt = createdAt
         self.conversation = conversation
         self.runs = runs
+        self.attachments = attachments
+    }
+}
+
+@Model
+final class MessageAttachmentRecord {
+    var id: UUID
+    var filePath: String
+    var displayName: String
+    var byteCount: Int64?
+    var pixelWidth: Int?
+    var pixelHeight: Int?
+    var createdAt: Date
+    var message: MessageRecord?
+
+    init(
+        id: UUID = UUID(),
+        filePath: String,
+        displayName: String,
+        byteCount: Int64? = nil,
+        pixelWidth: Int? = nil,
+        pixelHeight: Int? = nil,
+        createdAt: Date = .now,
+        message: MessageRecord? = nil
+    ) {
+        self.id = id
+        self.filePath = filePath
+        self.displayName = displayName
+        self.byteCount = byteCount
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.createdAt = createdAt
+        self.message = message
+    }
+
+    convenience init(attachment: ChatImageAttachment, message: MessageRecord? = nil) {
+        self.init(
+            id: attachment.id,
+            filePath: attachment.fileURL.path,
+            displayName: attachment.displayName,
+            byteCount: attachment.byteCount,
+            pixelWidth: attachment.pixelWidth,
+            pixelHeight: attachment.pixelHeight,
+            message: message
+        )
+    }
+
+    var fileURL: URL {
+        URL(fileURLWithPath: filePath)
+    }
+
+    var chatImageAttachment: ChatImageAttachment {
+        ChatImageAttachment(
+            id: id,
+            fileURL: fileURL,
+            displayName: displayName,
+            byteCount: byteCount,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight
+        )
     }
 }
 
@@ -201,6 +265,7 @@ enum AFMStudioSchema {
     static let models: [any PersistentModel.Type] = [
         ConversationRecord.self,
         MessageRecord.self,
+        MessageAttachmentRecord.self,
         RunRecord.self,
         BenchmarkSuiteRecord.self,
         BenchmarkResultRecord.self,

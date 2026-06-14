@@ -27,9 +27,9 @@ final class ChatStore {
         return conversation
     }
 
-    func send(_ prompt: String, in context: ModelContext) async {
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false, isGenerating == false else {
+    func send(_ prompt: String, attachments: [ChatImageAttachment] = [], in context: ModelContext) async {
+        let payload = ChatPromptPayload(text: prompt, attachments: attachments)
+        guard payload.canSubmit, isGenerating == false else {
             return
         }
 
@@ -40,11 +40,20 @@ final class ChatStore {
             return
         }
 
-        if conversation.messages.isEmpty {
-            conversation.title = title(for: trimmed)
+        guard payload.attachments.isEmpty || descriptor.capabilities.vision else {
+            errorMessage = "The selected model does not support image attachments."
+            return
         }
 
-        let userMessage = MessageRecord(role: .user, content: trimmed, conversation: conversation)
+        if conversation.messages.isEmpty {
+            conversation.title = title(for: payload.userVisibleText)
+        }
+
+        let userMessage = MessageRecord(role: .user, content: payload.userVisibleText, conversation: conversation)
+        let attachmentRecords = payload.attachments.map { attachment in
+            MessageAttachmentRecord(attachment: attachment, message: userMessage)
+        }
+        userMessage.attachments = attachmentRecords
         let assistantMessage = MessageRecord(role: .assistant, content: "", conversation: conversation)
         conversation.messages.append(userMessage)
         conversation.messages.append(assistantMessage)
@@ -58,7 +67,7 @@ final class ChatStore {
 
         do {
             let session = try await SessionFactory.makeSession(for: descriptor)
-            let stream = session.streamResponse(to: trimmed)
+            let stream = responseStream(for: payload, session: session)
             for try await snapshot in stream {
                 let parsedOutput = ModelOutputParser.parse(snapshot.content)
                 assistantMessage.rawContent = parsedOutput.rawText
@@ -81,6 +90,23 @@ final class ChatStore {
         }
 
         isGenerating = false
+    }
+
+    private func responseStream(
+        for payload: ChatPromptPayload,
+        session: LanguageModelSession
+    ) -> LanguageModelSession.ResponseStream<String> {
+        if payload.attachments.isEmpty {
+            return session.streamResponse(to: payload.modelPromptText)
+        }
+
+        let prompt = Prompt {
+            payload.modelPromptText
+            for attachment in payload.attachments {
+                Attachment(imageURL: attachment.fileURL).label(attachment.displayName)
+            }
+        }
+        return session.streamResponse(to: prompt)
     }
 
     private func title(for prompt: String) -> String {
