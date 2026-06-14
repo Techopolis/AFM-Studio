@@ -37,20 +37,14 @@ struct ChatTranscriptView: View {
             )
         }
         .navigationTitle(conversation.title)
-        .toolbar {
-            ToolbarItemGroup {
-                Button("Refresh Models") {
-                    registry.refresh()
-                }
-            }
-        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text("Model")
+                Label("Model", systemImage: "cpu")
                     .font(.headline)
+                    .labelStyle(.titleAndIcon)
                 ModelPickerView(conversation: conversation, registry: registry)
                     .frame(maxWidth: 360)
                 Spacer()
@@ -109,8 +103,13 @@ struct ChatTranscriptView: View {
 
     private var emptyTranscript: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: "bubble.left.and.text.bubble.right")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("Send a prompt to begin.")
                 .font(.title3.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Text("Responses stream through FoundationModels and are stored with run timing for later comparison.")
                 .foregroundStyle(.secondary)
         }
@@ -166,6 +165,14 @@ private struct ChatMessageBubble: View {
         return trimmed
     }
 
+    private var thinkingContent: String? {
+        guard isUser == false else {
+            return nil
+        }
+        let trimmed = message.thinkingContent?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
     var body: some View {
         HStack(alignment: .top) {
             if isUser {
@@ -196,6 +203,20 @@ private struct ChatMessageBubble: View {
                     }
                 }
                 .frame(maxWidth: isUser ? 560 : .infinity, alignment: isUser ? .trailing : .leading)
+
+            if let thinkingContent {
+                DisclosureGroup("Thinking") {
+                    Text(thinkingContent)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 2)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             metadata
         }

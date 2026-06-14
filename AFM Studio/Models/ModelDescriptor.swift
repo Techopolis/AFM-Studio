@@ -3,7 +3,6 @@ import Foundation
 enum ModelLane: String, Codable, CaseIterable, Identifiable, Sendable {
     case appleSystem
     case privateCloud
-    case localMLX
     case coreAI
     case server
 
@@ -15,12 +14,23 @@ enum ModelLane: String, Codable, CaseIterable, Identifiable, Sendable {
             "Apple"
         case .privateCloud:
             "Private Cloud"
-        case .localMLX:
-            "Local MLX"
         case .coreAI:
             "Core AI"
         case .server:
             "Server Providers"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .appleSystem:
+            "apple.logo"
+        case .privateCloud:
+            "icloud"
+        case .coreAI:
+            "cpu"
+        case .server:
+            "server.rack"
         }
     }
 }
@@ -30,6 +40,19 @@ enum ModelAvailabilityState: String, Codable, Equatable, Sendable {
     case unavailable
     case requiresSetup
     case experimental
+
+    var systemImage: String {
+        switch self {
+        case .available:
+            "checkmark.circle.fill"
+        case .experimental:
+            "flask.fill"
+        case .requiresSetup:
+            "wrench.and.screwdriver.fill"
+        case .unavailable:
+            "xmark.octagon.fill"
+        }
+    }
 }
 
 struct ModelCapabilitySet: Codable, Equatable, Sendable {
@@ -53,6 +76,15 @@ struct ModelDescriptor: Identifiable, Codable, Equatable, Sendable {
     var displayName: String
     var lane: ModelLane
     var modelID: String
+    var catalogID: String? = nil
+    var catalogSource: String? = nil
+    var catalogURL: URL? = nil
+    var downloadURL: URL? = nil
+    var exportCommand: String? = nil
+    var platformSummary: String? = nil
+    var resourcePath: String? = nil
+    var resourceBookmark: Data? = nil
+    var variant: String? = nil
     var capabilities: ModelCapabilitySet
     var availability: ModelAvailabilityState
     var statusLine: String

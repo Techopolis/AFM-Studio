@@ -83,18 +83,25 @@ final class CompareStore {
         let startedAt = Date()
         results[resultIndex].startedAt = startedAt
         results[resultIndex].isRunning = true
+        var rawOutput = ""
 
         do {
-            let session = try SessionFactory.makeSession(for: descriptor)
+            let session = try await SessionFactory.makeSession(for: descriptor)
             let stream = session.streamResponse(to: prompt)
             for try await snapshot in stream {
+                rawOutput = snapshot.content
+                let parsedOutput = ModelOutputParser.parse(snapshot.content)
                 updateResult(for: descriptor.id) { result in
-                    result.output = snapshot.content
+                    result.output = parsedOutput.displayText
                 }
             }
 
             let completedAt = Date()
             updateResult(for: descriptor.id) { result in
+                if result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   rawOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                    result.output = "No final response."
+                }
                 result.completedAt = completedAt
                 result.duration = completedAt.timeIntervalSince(startedAt)
                 result.isRunning = false
@@ -107,7 +114,7 @@ final class CompareStore {
                 result.errorCategory = String(describing: type(of: error))
                 result.isRunning = false
             }
-            errorMessage = error.localizedDescription
+            errorMessage = PrivateCloudComputeSupport.runtimeFailureMessage(for: descriptor, error: error)
         }
     }
 

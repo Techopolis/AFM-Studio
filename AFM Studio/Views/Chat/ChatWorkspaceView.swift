@@ -7,6 +7,7 @@ struct ChatWorkspaceView: View {
     @Query(sort: \UserModelRecord.displayName) private var userModels: [UserModelRecord]
 
     let registry: ModelRegistry
+    let downloadManager: ModelDownloadManager
     let chatStore: ChatStore
 
     @State private var selectedConversationID: UUID?
@@ -43,11 +44,11 @@ struct ChatWorkspaceView: View {
             }
         }
         .onAppear {
-            registry.refresh(userModels: userModels)
+            registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
             restoreSelectionIfNeeded()
         }
         .onChange(of: userModels.count) { _, _ in
-            registry.refresh(userModels: userModels)
+            registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
         }
         .onChange(of: selectedConversationID) { _, newValue in
             guard let newValue,
@@ -59,8 +60,10 @@ struct ChatWorkspaceView: View {
     }
 
     private func createConversation() {
-        registry.refresh(userModels: userModels)
-        let selectedModelID = registry.descriptors.first?.id ?? BuiltInModelID.appleSystem
+        registry.refresh(userModels: userModels, remoteRegistry: downloadManager.registry)
+        let selectedModelID = ModelSelectionPolicy
+            .preferredModelID(currentModelID: BuiltInModelID.appleSystem, descriptors: registry.descriptors)
+            ?? BuiltInModelID.appleSystem
         let conversation = ConversationRecord(selectedModelID: selectedModelID)
         modelContext.insert(conversation)
         try? modelContext.save()
@@ -113,8 +116,11 @@ private struct EmptyChatView: View {
             Text("Pick a model, send a prompt, and inspect the run details as the response streams.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("New Chat", action: onNewConversation)
+            Button(action: onNewConversation) {
+                Label("New Chat", systemImage: "plus")
+            }
                 .buttonStyle(.borderedProminent)
+                .accessibilityHint("Creates a new conversation")
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

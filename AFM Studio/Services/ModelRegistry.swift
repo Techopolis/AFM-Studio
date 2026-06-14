@@ -6,12 +6,17 @@ import Observation
 @Observable
 final class ModelRegistry {
     private(set) var descriptors: [ModelDescriptor] = []
+    private var cachedRemoteRegistry: RemoteModelRegistry?
 
     init() {
         refresh()
     }
 
-    func refresh(userModels: [UserModelRecord] = []) {
+    func refresh(userModels: [UserModelRecord] = [], remoteRegistry: RemoteModelRegistry? = nil) {
+        if let remoteRegistry {
+            cachedRemoteRegistry = remoteRegistry
+        }
+
         var next: [ModelDescriptor] = []
         next.append(systemDescriptor())
 
@@ -19,7 +24,13 @@ final class ModelRegistry {
             next.append(privateCloudDescriptor())
         }
 
-        next.append(mlxGemmaDescriptor())
+        let activeRemoteRegistry = remoteRegistry ?? cachedRemoteRegistry
+        next.append(contentsOf: CoreAIModelCatalog.entries.map { entry in
+            coreAICatalogDescriptor(
+                for: entry,
+                remoteModel: activeRemoteRegistry?.remoteModel(matching: entry)
+            )
+        })
         next.append(contentsOf: userModels.map(userDescriptor))
         descriptors = next
     }
@@ -73,30 +84,73 @@ final class ModelRegistry {
         )
     }
 
-    private func mlxGemmaDescriptor() -> ModelDescriptor {
-        ModelDescriptor(
-            id: BuiltInModelID.gemma4E2B,
-            displayName: "Gemma 4 E2B Instruct",
-            lane: .localMLX,
-            modelID: MLXFoundationModelSupport.gemma4E2BModelID,
+    private func coreAICatalogDescriptor(
+        for entry: CoreAIModelCatalogEntry,
+        remoteModel: RemoteModel?
+    ) -> ModelDescriptor {
+        let isLinked = CoreAILanguageModelSupport.isCompiledIn
+        let installedBundleURL = CoreAIModelStore.installedBundleIfAvailable(for: entry)
+            ?? remoteModel.flatMap(CoreAIModelStore.installedBundleIfAvailable)
+        let availability: ModelAvailabilityState
+        let statusLine: String
+
+        if isLinked == false {
+            availability = .unavailable
+            statusLine = CoreAILanguageModelSupport.statusLine
+        } else if installedBundleURL != nil {
+            availability = .experimental
+            statusLine = "Installed local Core AI bundle - \(entry.source.title)"
+        } else if let remoteModel {
+            availability = .requiresSetup
+            statusLine = "Ready to download - \(remoteModel.formattedSize)"
+        } else {
+            availability = .requiresSetup
+            statusLine = entry.statusLine
+        }
+
+        return ModelDescriptor(
+            id: entry.id,
+            displayName: entry.displayName,
+            lane: .coreAI,
+            modelID: entry.modelID,
+            catalogID: entry.id,
+            catalogSource: entry.source.title,
+            catalogURL: entry.modelCardURL,
+            downloadURL: remoteModel?.primaryFile?.url ?? entry.downloadURL,
+            exportCommand: entry.exportCommand,
+            platformSummary: entry.platformSummary,
+            resourcePath: installedBundleURL?.path,
             capabilities: .textOnly,
-            availability: MLXFoundationModelSupport.isCompiledIn ? .experimental : .requiresSetup,
-            statusLine: MLXFoundationModelSupport.statusLine,
+            availability: availability,
+            statusLine: statusLine,
             isBuiltIn: true
         )
     }
 
     private func userDescriptor(for record: UserModelRecord) -> ModelDescriptor {
-        let lane = ModelLane(rawValue: record.laneRawValue) ?? .localMLX
+        let lane = ModelLane(rawValue: record.laneRawValue) ?? .coreAI
+        let catalogEntry = record.catalogID.flatMap(CoreAIModelCatalog.entry)
+        let hasCoreAIPath = record.resourcePath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        let hasCoreAIResource = record.resourceBookmark != nil || hasCoreAIPath
+        let availability: ModelAvailabilityState
         let statusLine: String
         switch lane {
-        case .localMLX:
-            statusLine = MLXFoundationModelSupport.statusLine
         case .server:
+            availability = .requiresSetup
             statusLine = "Waiting for AFM provider configuration"
         case .coreAI:
-            statusLine = "Waiting for Core AI model support"
+            if CoreAILanguageModelSupport.isCompiledIn == false {
+                availability = .requiresSetup
+                statusLine = CoreAILanguageModelSupport.statusLine
+            } else if hasCoreAIResource == false {
+                availability = .requiresSetup
+                statusLine = catalogEntry?.statusLine ?? "Select a Core AI model bundle"
+            } else {
+                availability = .experimental
+                statusLine = "Core AI bundle ready - \(catalogEntry?.source.title ?? "Custom bundle")"
+            }
         case .appleSystem, .privateCloud:
+            availability = .requiresSetup
             statusLine = "Custom descriptor"
         }
 
@@ -105,10 +159,29 @@ final class ModelRegistry {
             displayName: record.displayName,
             lane: lane,
             modelID: record.modelID,
+            catalogID: record.catalogID,
+            catalogSource: catalogEntry?.source.title,
+            catalogURL: catalogEntry?.modelCardURL,
+            downloadURL: catalogEntry?.downloadURL,
+            exportCommand: catalogEntry?.exportCommand,
+            platformSummary: catalogEntry?.platformSummary,
+            resourcePath: record.resourcePath,
+            resourceBookmark: record.resourceBookmark,
+            variant: record.variant,
             capabilities: .textOnly,
-            availability: .requiresSetup,
+            availability: availability,
             statusLine: statusLine,
             isBuiltIn: false
         )
+    }
+}
+
+private extension RemoteModelRegistry {
+    func remoteModel(matching entry: CoreAIModelCatalogEntry) -> RemoteModel? {
+        models.first { remoteModel in
+            remoteModel.hfModelId == entry.modelID ||
+            remoteModel.id == entry.id ||
+            entry.localBundlePath?.hasPrefix("\(remoteModel.id)/") == true
+        }
     }
 }

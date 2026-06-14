@@ -34,6 +34,8 @@ final class MessageRecord {
     var id: UUID
     var role: MessageRole
     var content: String
+    var rawContent: String?
+    var thinkingContent: String?
     var createdAt: Date
     var conversation: ConversationRecord?
 
@@ -44,6 +46,8 @@ final class MessageRecord {
         id: UUID = UUID(),
         role: MessageRole,
         content: String,
+        rawContent: String? = nil,
+        thinkingContent: String? = nil,
         createdAt: Date = .now,
         conversation: ConversationRecord? = nil,
         runs: [RunRecord] = []
@@ -51,6 +55,8 @@ final class MessageRecord {
         self.id = id
         self.role = role
         self.content = content
+        self.rawContent = rawContent
+        self.thinkingContent = thinkingContent
         self.createdAt = createdAt
         self.conversation = conversation
         self.runs = runs
@@ -147,13 +153,31 @@ final class UserModelRecord {
     var displayName: String
     var laneRawValue: String
     var modelID: String
+    var catalogID: String?
+    var resourcePath: String?
+    var resourceBookmark: Data?
+    var variant: String?
 
-    init(id: UUID = UUID(), descriptorID: String, displayName: String, laneRawValue: String, modelID: String) {
+    init(
+        id: UUID = UUID(),
+        descriptorID: String,
+        displayName: String,
+        laneRawValue: String,
+        modelID: String,
+        catalogID: String? = nil,
+        resourcePath: String? = nil,
+        resourceBookmark: Data? = nil,
+        variant: String? = nil
+    ) {
         self.id = id
         self.descriptorID = descriptorID
         self.displayName = displayName
         self.laneRawValue = laneRawValue
         self.modelID = modelID
+        self.catalogID = catalogID
+        self.resourcePath = resourcePath
+        self.resourceBookmark = resourceBookmark
+        self.variant = variant
     }
 }
 
@@ -166,7 +190,11 @@ enum MessageRole: String, Codable, Sendable {
 enum BuiltInModelID {
     static let appleSystem = "apple.system.default"
     static let privateCloud = "apple.private-cloud.default"
-    static let gemma4E2B = "mlx.gemma-4-e2b-it"
+    static let gemma4E2BCoreAI = "coreai.catalog.gemma-4-e2b"
+    static let gemma4E4BCoreAI = "coreai.catalog.gemma-4-e4b"
+    static let gemma3_4BCoreAI = "coreai.catalog.gemma-3-4b-it"
+    static let gemma3_12BCoreAI = "coreai.catalog.gemma-3-12b-it"
+    static let gptOSS20BCoreAI = "coreai.catalog.gpt-oss-20b"
 }
 
 enum AFMStudioSchema {

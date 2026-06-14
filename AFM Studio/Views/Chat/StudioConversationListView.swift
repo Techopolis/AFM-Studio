@@ -29,8 +29,11 @@ struct StudioConversationListView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("New", action: onNewConversation)
+            Button(action: onNewConversation) {
+                Label("New Chat", systemImage: "plus")
+            }
                 .buttonStyle(.borderedProminent)
+                .accessibilityHint("Creates a new conversation")
         }
         .padding()
     }
@@ -48,8 +51,10 @@ struct StudioConversationListView: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
-                    Button("Delete", role: .destructive) {
+                    Button(role: .destructive) {
                         onDelete(conversation)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
                     }
                 }
             }
@@ -69,8 +74,11 @@ struct StudioConversationListView: View {
             Text("Create a chat to start testing Apple Foundation Models.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Button("New Chat", action: onNewConversation)
+            Button(action: onNewConversation) {
+                Label("New Chat", systemImage: "plus")
+            }
                 .buttonStyle(.borderedProminent)
+                .accessibilityHint("Creates a new conversation")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding()
@@ -96,21 +104,16 @@ private struct StudioConversationRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
+            Image(systemName: isActive ? "largecircle.fill.circle" : "text.bubble")
+                .font(.body)
+                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    if isActive {
-                        Text("Active")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.accentColor)
-                            .clipShape(Capsule())
-                    }
-                    Text(conversation.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                }
+                Text(conversation.title)
+                    .font(.headline)
+                    .lineLimit(1)
 
                 Text(subtitle)
                     .font(.subheadline)
@@ -135,6 +138,18 @@ private struct StudioConversationRowView: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(conversation.title)
+        .accessibilityValue(accessibilityValue)
         .accessibilityHint("Opens this conversation")
+    }
+
+    private var accessibilityValue: String {
+        var values: [String] = []
+        if isActive {
+            values.append("selected")
+        }
+        values.append("\(conversation.messages.count) messages")
+        values.append(subtitle)
+        return values.joined(separator: ", ")
     }
 }

@@ -60,17 +60,24 @@ final class BenchmarkStore {
     ) async {
         let startedAt = Date()
         var output = ""
+        var rawOutput = ""
         var errorCategory: String?
 
         do {
-            let session = try SessionFactory.makeSession(for: descriptor)
+            let session = try await SessionFactory.makeSession(for: descriptor)
             let stream = session.streamResponse(to: prompt)
             for try await snapshot in stream {
-                output = snapshot.content
+                rawOutput = snapshot.content
+                output = ModelOutputParser.parse(snapshot.content).displayText
             }
         } catch {
             errorCategory = String(describing: type(of: error))
-            errorMessage = error.localizedDescription
+            errorMessage = PrivateCloudComputeSupport.runtimeFailureMessage(for: descriptor, error: error)
+        }
+
+        if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           rawOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            output = "No final response."
         }
 
         let duration = Date().timeIntervalSince(startedAt)

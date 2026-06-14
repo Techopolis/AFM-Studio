@@ -1,12 +1,6 @@
 import Foundation
 import FoundationModels
 
-#if canImport(MLXFoundationModels)
-import MLXFoundationModels
-#elseif canImport(MLXLanguageModel)
-import MLXLanguageModel
-#endif
-
 enum SessionFactoryError: LocalizedError {
     case unsupportedModel(String)
     case unavailable(String)
@@ -22,7 +16,11 @@ enum SessionFactoryError: LocalizedError {
 }
 
 enum SessionFactory {
-    static func makeSession(for descriptor: ModelDescriptor) throws -> LanguageModelSession {
+    static func makeSession(for descriptor: ModelDescriptor) async throws -> LanguageModelSession {
+        if descriptor.lane == .coreAI {
+            return try await CoreAILanguageModelSupport.makeSession(for: descriptor)
+        }
+
         switch descriptor.id {
         case BuiltInModelID.appleSystem:
             return LanguageModelSession(model: SystemLanguageModel.default)
@@ -31,13 +29,6 @@ enum SessionFactory {
                 return LanguageModelSession(model: PrivateCloudComputeLanguageModel())
             }
             throw SessionFactoryError.unavailable("Private Cloud Compute requires OS 27.")
-        case BuiltInModelID.gemma4E2B:
-            #if canImport(MLXFoundationModels) || canImport(MLXLanguageModel)
-            let model = MLXLanguageModel(modelID: descriptor.modelID)
-            return LanguageModelSession(model: model)
-            #else
-            throw SessionFactoryError.unavailable("MLX Foundation Models support is not linked in this build.")
-            #endif
         default:
             throw SessionFactoryError.unsupportedModel(descriptor.id)
         }

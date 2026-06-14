@@ -57,10 +57,13 @@ struct CompareView: View {
                         }
                         .pickerStyle(.menu)
                         Spacer()
-                        Button("Remove") {
+                        Button {
                             store.removeModel(at: index)
+                        } label: {
+                            Label("Remove", systemImage: "minus.circle")
                         }
                         .disabled(store.selectedModelIDs.count <= 1 || store.isRunning)
+                        .accessibilityHint("Removes this model from the comparison")
                     }
 
                     if let descriptor = registry.descriptor(for: store.selectedModelIDs[index]),
@@ -73,8 +76,10 @@ struct CompareView: View {
             }
 
             HStack {
-                Button("Add Model") {
+                Button {
                     store.addModel(registry: registry)
+                } label: {
+                    Label("Add Model", systemImage: "plus")
                 }
                 .disabled(store.isRunning)
 
@@ -86,13 +91,16 @@ struct CompareView: View {
                         .foregroundStyle(.red)
                 }
 
-                Button(store.isRunning ? "Running..." : "Compare") {
+                Button {
                     Task {
                         await store.run(registry: registry)
                     }
+                } label: {
+                    Label(store.isRunning ? "Running" : "Compare", systemImage: store.isRunning ? "hourglass" : "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(canRun == false)
+                .accessibilityHint("Runs the prompt against the selected models")
             }
         }
         .padding()
@@ -103,8 +111,13 @@ struct CompareView: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                 if store.results.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
+                        Image(systemName: "rectangle.2.swap")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                         Text("No comparison yet")
                             .font(.title3.weight(.semibold))
+                            .accessibilityAddTraits(.isHeader)
                         Text("Enter a prompt, choose models, and run a side-by-side comparison.")
                             .foregroundStyle(.secondary)
                     }
@@ -156,9 +169,10 @@ private struct ComparisonResultCard: View {
                 Text(result.displayName)
                     .font(.headline)
                 Spacer()
-                Text(statusText)
+                Label(statusText, systemImage: statusImage)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(statusColor)
+                    .labelStyle(.titleAndIcon)
             }
 
             Text(bodyText)
@@ -179,6 +193,9 @@ private struct ComparisonResultCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.secondary.opacity(0.18))
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(result.displayName)
+        .accessibilityValue("\(statusText), \(bodyText)")
     }
 
     private var statusText: String {
@@ -192,6 +209,19 @@ private struct ComparisonResultCard: View {
             return "Done"
         }
         return "Queued"
+    }
+
+    private var statusImage: String {
+        if result.isRunning {
+            return "hourglass"
+        }
+        if result.errorCategory != nil {
+            return "xmark.octagon.fill"
+        }
+        if result.completedAt != nil {
+            return "checkmark.circle.fill"
+        }
+        return "circle"
     }
 
     private var statusColor: Color {

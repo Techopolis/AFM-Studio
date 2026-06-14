@@ -39,13 +39,18 @@ struct ComposerView: View {
                         onSend()
                     }
                 }
+                .accessibilityLabel("Message")
+                .accessibilityHint("Type a prompt for the selected model")
 
             HStack {
                 Spacer()
-                Button(isSending ? "Sending..." : "Send", action: onSend)
+                Button(action: onSend) {
+                    Label(isSending ? "Sending" : "Send", systemImage: isSending ? "hourglass" : "paperplane.fill")
+                }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(canSubmit == false)
+                    .accessibilityHint("Sends the message to the selected model")
             }
         }
         .padding()

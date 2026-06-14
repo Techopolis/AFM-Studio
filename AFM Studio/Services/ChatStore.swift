@@ -57,18 +57,27 @@ final class ChatStore {
         assistantMessage.runs.append(run)
 
         do {
-            let session = try SessionFactory.makeSession(for: descriptor)
+            let session = try await SessionFactory.makeSession(for: descriptor)
             let stream = session.streamResponse(to: trimmed)
             for try await snapshot in stream {
-                assistantMessage.content = snapshot.content
+                let parsedOutput = ModelOutputParser.parse(snapshot.content)
+                assistantMessage.rawContent = parsedOutput.rawText
+                assistantMessage.thinkingContent = parsedOutput.thinkingText
+                assistantMessage.content = parsedOutput.displayText
+            }
+            if assistantMessage.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               assistantMessage.rawContent?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                assistantMessage.content = "No final response."
             }
             let completedAt = Date()
             run.completedAt = completedAt
             run.duration = completedAt.timeIntervalSince(startedAt)
         } catch {
             assistantMessage.content = "Generation failed."
+            assistantMessage.rawContent = nil
+            assistantMessage.thinkingContent = nil
             run.errorCategory = String(describing: type(of: error))
-            errorMessage = error.localizedDescription
+            errorMessage = PrivateCloudComputeSupport.runtimeFailureMessage(for: descriptor, error: error)
         }
 
         isGenerating = false

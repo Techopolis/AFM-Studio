@@ -32,12 +32,12 @@ struct BenchmarkView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Suite")
+            Label("Suite", systemImage: "list.bullet.rectangle")
                 .font(.headline)
             TextField("Suite Name", text: $store.suiteName)
                 .textFieldStyle(.roundedBorder)
 
-            Text("Model")
+            Label("Model", systemImage: "cpu")
                 .font(.headline)
             Picker("Model", selection: $store.selectedModelID) {
                 ForEach(registry.groupedDescriptors(), id: \.lane.rawValue) { group in
@@ -57,7 +57,7 @@ struct BenchmarkView: View {
                     .foregroundStyle(.orange)
             }
 
-            Text("Prompts")
+            Label("Prompts", systemImage: "text.quote")
                 .font(.headline)
             TextEditor(text: $store.promptText)
                 .font(.body)
@@ -86,13 +86,16 @@ struct BenchmarkView: View {
                         .lineLimit(2)
                 }
                 Spacer()
-                Button(store.isRunning ? "Running..." : "Run Benchmark") {
+                Button {
                     Task {
                         await store.run(registry: registry, context: modelContext)
                     }
+                } label: {
+                    Label(store.isRunning ? "Running" : "Run Benchmark", systemImage: store.isRunning ? "hourglass" : "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(canRun == false)
+                .accessibilityHint("Runs every prompt in the benchmark suite")
             }
 
             Spacer()
@@ -105,7 +108,7 @@ struct BenchmarkView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Results")
+                    Label("Results", systemImage: "chart.bar.doc.horizontal")
                         .font(.title2.weight(.semibold))
                     Spacer()
                     Text("\(results.count)")
@@ -115,8 +118,13 @@ struct BenchmarkView: View {
 
                 if results.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
+                        Image(systemName: "speedometer")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                         Text("No benchmark results")
                             .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
                         Text("Run a suite to create result history.")
                             .foregroundStyle(.secondary)
                     }
@@ -167,17 +175,18 @@ private struct BenchmarkResultRow: View {
                 .lineLimit(5)
 
             HStack(spacing: 10) {
-                Text("\(result.duration, specifier: "%.2f") seconds")
+                Label("\(result.duration, specifier: "%.2f") seconds", systemImage: "timer")
                 if let outputTokens = result.outputTokens {
-                    Text("\(outputTokens) output tokens")
+                    Label("\(outputTokens) output tokens", systemImage: "number")
                 }
                 if let errorCategory = result.errorCategory {
-                    Text(errorCategory)
+                    Label(errorCategory, systemImage: "xmark.octagon.fill")
                         .foregroundStyle(.red)
                 }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            .labelStyle(.titleAndIcon)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -187,6 +196,9 @@ private struct BenchmarkResultRow: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.secondary.opacity(0.18))
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(result.suiteName), \(modelName)")
+        .accessibilityValue("\(result.duration) seconds, \(outputText)")
     }
 
     private var outputText: String {

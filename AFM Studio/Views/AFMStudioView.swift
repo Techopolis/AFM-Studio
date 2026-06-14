@@ -1,42 +1,46 @@
 import SwiftUI
 
 struct AFMStudioView: View {
-    @State private var registry: ModelRegistry
-    @State private var chatStore: ChatStore
-
-    init() {
-        let registry = ModelRegistry()
-        _registry = State(initialValue: registry)
-        _chatStore = State(initialValue: ChatStore(registry: registry))
-    }
+    let registry: ModelRegistry
+    let downloadManager: ModelDownloadManager
+    let chatStore: ChatStore
 
     var body: some View {
         TabView {
-            ChatWorkspaceView(registry: registry, chatStore: chatStore)
+            ChatWorkspaceView(registry: registry, downloadManager: downloadManager, chatStore: chatStore)
                 .tabItem {
-                    Text("Chat")
-                }
-
-            ModelLibraryView(registry: registry)
-                .tabItem {
-                    Text("Models")
+                    Label("Chat", systemImage: "bubble.left.and.text.bubble.right")
                 }
 
             CompareView(registry: registry)
                 .tabItem {
-                    Text("Compare")
+                    Label("Compare", systemImage: "rectangle.2.swap")
                 }
 
             BenchmarkView(registry: registry)
                 .tabItem {
-                    Text("Benchmarks")
+                    Label("Benchmarks", systemImage: "speedometer")
                 }
 
-            StudioSettingsView(registry: registry)
+            #if !os(macOS)
+            StudioSettingsView(registry: registry, downloadManager: downloadManager)
                 .tabItem {
-                    Text("Settings")
+                    Label("Settings", systemImage: "gearshape")
                 }
+            #endif
         }
         .frame(minWidth: 980, minHeight: 680)
+        #if os(macOS)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .help("Open Settings")
+                .accessibilityLabel("Settings")
+                .accessibilityHint("Opens AFM Studio settings")
+            }
+        }
+        #endif
     }
 }
